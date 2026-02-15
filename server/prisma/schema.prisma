@@ -1,0 +1,213 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  VOLUNTEER
+  ORGANIZATION
+}
+
+enum AuthProvider {
+  LOCAL
+  GOOGLE
+}
+
+enum ActivityType {
+  HARVESTING
+  REHABILITATION
+  RENOVATION
+  ELDERLY_HELP
+  DISABLED_CHILDREN_HELP
+  ANIMAL_CARE
+  FOOD_DISTRIBUTION
+  TUTORING
+  ENVIRONMENT
+  COMMUNITY
+  OTHER
+}
+
+enum DayOfWeek {
+  SUNDAY
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+}
+
+enum IsraelArea {
+  NORTH
+  HAIFA
+  CENTER
+  TEL_AVIV
+  JERUSALEM
+  SOUTH
+  JUDEA_SAMARIA
+  SHARON
+  SHFELA
+}
+
+enum RegistrationStatus {
+  CONFIRMED
+  CANCELLED
+}
+
+enum CommitmentType {
+  ALL_SESSIONS
+  PICK_SPECIFIC
+}
+
+model User {
+  id           String       @id @default(uuid())
+  email        String       @unique
+  passwordHash String?
+  firstName    String
+  lastName     String
+  phone        String?
+  role         UserRole     @default(VOLUNTEER)
+  authProvider AuthProvider @default(LOCAL)
+  googleId     String?      @unique
+  avatarUrl    String?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  organization     Organization?
+  volunteerProfile VolunteerProfile?
+  registrations    Registration[]
+  sentMessages     Message[]          @relation("SentMessages")
+  receivedMessages Message[]          @relation("ReceivedMessages")
+
+  @@index([email])
+  @@index([googleId])
+}
+
+model Organization {
+  id           String     @id @default(uuid())
+  name         String
+  description  String     @db.Text
+  contactEmail String
+  contactPhone String?
+  website      String?
+  area         IsraelArea
+  address      String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  ownerId String @unique
+  owner   User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  activities Activity[]
+
+  @@index([ownerId])
+  @@index([area])
+}
+
+model VolunteerProfile {
+  id                 String         @id @default(uuid())
+  area               IsraelArea
+  radiusKm           Int            @default(30)
+  preferredTypes     ActivityType[]
+  availableDays      DayOfWeek[]
+  availableStartHour Int            @default(8)
+  availableEndHour   Int            @default(18)
+  bio                String?        @db.Text
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([area])
+}
+
+model Activity {
+  id             String         @id @default(uuid())
+  title          String
+  description    String         @db.Text
+  type           ActivityType
+  area           IsraelArea
+  address        String
+  minVolunteers  Int
+  maxVolunteers  Int
+  commitmentType CommitmentType @default(PICK_SPECIFIC)
+  isActive       Boolean        @default(true)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  timeSlots TimeSlot[]
+
+  @@index([organizationId])
+  @@index([type])
+  @@index([area])
+  @@index([isActive])
+}
+
+model TimeSlot {
+  id        String   @id @default(uuid())
+  date      DateTime @db.Date
+  startTime String
+  endTime   String
+  createdAt DateTime @default(now())
+
+  activityId String
+  activity   Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+
+  registrations Registration[]
+
+  @@unique([activityId, date, startTime])
+  @@index([activityId])
+  @@index([date])
+}
+
+model Registration {
+  id        String             @id @default(uuid())
+  status    RegistrationStatus @default(CONFIRMED)
+  note      String?            @db.Text
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  timeSlotId String
+  timeSlot   TimeSlot @relation(fields: [timeSlotId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, timeSlotId])
+  @@index([userId])
+  @@index([timeSlotId])
+  @@index([status])
+}
+
+model Message {
+  id        String   @id @default(uuid())
+  subject   String
+  body      String   @db.Text
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  senderId String
+  sender   User   @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+
+  receiverId String
+  receiver   User   @relation("ReceivedMessages", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  threadId String?
+  parentId String?
+  parent   Message?  @relation("MessageReplies", fields: [parentId], references: [id])
+  replies  Message[] @relation("MessageReplies")
+
+  @@index([senderId])
+  @@index([receiverId])
+  @@index([threadId])
+  @@index([isRead])
+}
